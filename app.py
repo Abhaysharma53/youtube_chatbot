@@ -1,14 +1,29 @@
 import streamlit as st
-from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi
+from youtube_transcript_api import TranscriptsDisabled, YouTubeTranscriptApi, NoTranscriptFound, VideoUnavailable
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough, RunnableParallel
 from dotenv import load_dotenv
+from langchain_community.vectorstores import FAISS
 
 load_dotenv()
 ytt_api = YouTubeTranscriptApi()
+splitter = RecursiveCharacterTextSplitter(chunk_size = 1000, chunk_overlap = 150)
+embedding_model= OpenAIEmbeddings(model= 'text-embedding-3-small')
+llm = ChatOpenAI(temperature= 0.25)
+def format_documents(retrieved_docs):
+    context_text = "\n\n".join(docs.page_content for docs in retrieved_docs)
+    return context_text
+
+prompt = PromptTemplate(template = """You are a helpful assistant, who helps to give the answer about youtube video based upon the context received under your best capacity
+                        if you think the question asked by the user has not any relation with the youtube video, just say you dont have enough context to answer this question
+                        
+                        {context}
+                        Question: {query}""",
+                        input_variables= ['context', 'query'])
+
 st.set_page_config(page_title= 'YouTube Chatbot')
 st.title('Youtube Chatbot App')
 st.sidebar.header("YouTube Video")
@@ -20,16 +35,31 @@ with st.chat_message("assistant"):
 
 
 if video_id:
-    active_state = True
-    raw_transcript = ytt_api.get_transcript(video_id, languages= ['en', 'hi'])
+    #active_state = True
+    try:
+        raw_transcript = ytt_api.get_transcript(video_id, languages= ['en', 'hi'])
+    except TranscriptsDisabled:
+        st.warning('❌ Transcripts are disabled for this video.')
+    except NoTranscriptFound:
+        st.warning('❌ No transcript found in the requested languages.')
+    except VideoUnavailable:
+        st.warning("❌ The video is unavailable.")
+    except Exception as e:
+        st.warning('Some Unexpected error occured. please try again!')
     transcript = " ".join(chunk['text'] for chunk in raw_transcript)
-
+    chunks = splitter.create_documents([transcript])
+    vector_store = FAISS.from_documents(chunks, embedding_model)
 
 query = st.chat_input("Ask your question", disabled= not bool(video_id))
 if query:
     #st.write(f'User has sent the following query {query}')
-    with st.chat_message("assistant"):
-        st.write(transcript)
+    # with st.chat_message("assistant"):
+    #     st.write(transcript)
+        #st.write(len(chunks))   #chunks are getting created
+    retriever = vector_store.as_retriever(search_type = 'similarity', search_kwargs = {"k": 5})
+    retrieved_docs = retriever.invoke(query)
+    st.write(retrieved_docs)
+
 else:
 # Disable chat input
     st.info("Please enter a YouTube video ID in the sidebar to start chatting.", icon = "🚨")
