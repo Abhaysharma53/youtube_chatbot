@@ -40,13 +40,13 @@ if video_id:
     try:
         raw_transcript = ytt_api.get_transcript(video_id, languages= ['en', 'hi'])
     except TranscriptsDisabled:
-        st.warning('❌ Transcripts are disabled for this video.')
+        st.exception('❌ Transcripts are disabled for this video.')
     except NoTranscriptFound:
-        st.warning('❌ No transcript found in the requested languages.')
+        st.exception('❌ No transcript found in the requested languages.')
     except VideoUnavailable:
-        st.warning("❌ The video is unavailable.")
+        st.exception("❌ The video is unavailable.")
     except Exception as e:
-        st.warning('Some Unexpected error occured. please try again!')
+        st.exception('Some Unexpected error occured. please try again!')
     transcript = " ".join(chunk['text'] for chunk in raw_transcript)
     chunks = splitter.create_documents([transcript])
     vector_store = FAISS.from_documents(chunks, embedding_model)
