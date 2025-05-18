@@ -10,6 +10,7 @@ from langchain_community.vectorstores import FAISS
 
 load_dotenv()
 ytt_api = YouTubeTranscriptApi()
+parser = StrOutputParser()
 splitter = RecursiveCharacterTextSplitter(chunk_size = 1000, chunk_overlap = 150)
 embedding_model= OpenAIEmbeddings(model= 'text-embedding-3-small')
 llm = ChatOpenAI(temperature= 0.25)
@@ -56,9 +57,19 @@ if query:
     # with st.chat_message("assistant"):
     #     st.write(transcript)
         #st.write(len(chunks))   #chunks are getting created
+    with st.chat_message("user"):
+        st.write(query)
     retriever = vector_store.as_retriever(search_type = 'similarity', search_kwargs = {"k": 5})
     retrieved_docs = retriever.invoke(query)
-    st.write(retrieved_docs)
+    #st.write(retrieved_docs)
+    parallel_chain = RunnableParallel({
+        'context': retriever | RunnableLambda(format_documents),
+        'query': RunnablePassthrough()
+    }
+    )
+    main_chain = parallel_chain | prompt | llm | parser
+    with st.chat_message("assistant"):
+        st.write(main_chain.invoke(query))
 
 else:
 # Disable chat input
